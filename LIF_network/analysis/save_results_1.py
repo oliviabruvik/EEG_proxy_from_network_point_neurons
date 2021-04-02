@@ -1,13 +1,8 @@
 # -*- coding: utf-8 -*-
 
-###############################################################################
-## Simulate network_1 and save results to file.                              ##
-##                                                                           ##
-## Author: Pablo Martinez Canada (pablo.martinez@iit.it)                     ##
-## Date: 15/02/2021                                                          ##
-###############################################################################
-
-
+"""
+Simulate network_1 and save results to file.
+"""
 import nest
 import numpy as np
 import pandas as pd
@@ -86,16 +81,17 @@ inhibitory_cell_params  = {
 Neuron_params = [excitatory_cell_params,inhibitory_cell_params]
 
 Simulation_params = {
-    "experiment_id": "test",
-    "simtime": 1000.0,
-    "simstep": 1.0,
-    "siminterval": 1000.0,
+    "experiment_id": "Sim1",
+    "simtime": 10000.,
+    "simstep": 0.1,
+    "siminterval": 10000.,
     "trials": 1,
-    "num_threads": 8,
+    "num_threads": 60,
     "toMemory" : True,
     "decimate": False,
     "computeMP": False
 }
+
 
 External_input_params = {
     "v_0": 1.5,
@@ -117,8 +113,13 @@ Analysis_params = {
 #! ===========
 
 # External input rates
-# ext_rates = np.arange(1.5,10.5,0.5) # (spikes/s)
-ext_rates = [1.5]
+ext_rates = [2.0] # (spikes/s)
+# g_ex
+g_ex_range = np.linspace(0.625,2.0,num = 20)
+g_ex_range[6] = 1.0
+#g_in
+g_in_range = np.linspace(0.5,1.6,num = 20)
+g_in_range[9] = 1.0
 
 # create directory for output
 if not os.path.isdir('../results'):
@@ -128,364 +129,420 @@ if not os.path.isdir('../results/'+Simulation_params["experiment_id"]):
     os.mkdir('../results/'+Simulation_params["experiment_id"])
 
 for v0 in ext_rates:
-    print("Ext. rate = %s sp/s" % v0)
-    External_input_params["v_0"] = v0
+    for ggex in g_ex_range:
+        for ggin in g_in_range:
+            # Select only g values within canonical axes
+            if ggex== 1. or ggin== 1.:
 
-    for trial in range(Simulation_params["trials"]):
-        print("Trial = %s" % trial)
+                # Print simulation case
+                g_ratio = ggin*Network_params["inh_exc_recurrent"]/(ggex*Network_params["exc_exc_recurrent"])
+                print("\nExt. rate = %s sp/s, g_ex = %s nS, g_in = %s nS, g = %s \n" % (v0,ggex,ggin,g_ratio))
 
-        # Membrane potentials
-        if Simulation_params["computeMP"]:
-            potentials = [ [np.array([]) for k in range(Network_params["N_exc"])],
-                           [np.array([]) for k in range(Network_params["N_inh"])] ]
+                # Change ext. firing rate
+                External_input_params["v_0"] = v0
 
-        # AMPA and GABA currents of exc. cells
-        AMPA_current = np.array([])
-        GABA_current = np.array([])
+                # Copy dicts
+                Network_params_copy = dict(Network_params)
 
-        # LFPs
-        LFP = [np.array([]) for k in range(7)]
+                # Change items of the copy
+                Network_params_copy["exc_exc_recurrent"] *= ggex
+                Network_params_copy["exc_inh_recurrent"] *= ggex
+                Network_params_copy["inh_exc_recurrent"] *= ggin
+                Network_params_copy["inh_inh_recurrent"] *= ggin
 
-        # PSTHs of exc. cells
-        PSTH_bin_size = 1.0 # ms
-        all_PSTHs_exc = np.zeros((Network_params["N_exc"],int(Simulation_params["simtime"]/PSTH_bin_size)))
-        all_PSTHs_inh = np.zeros((Network_params["N_inh"],int(Simulation_params["simtime"]/PSTH_bin_size)))
+                for trial in range(Simulation_params["trials"]):
+                    print("Trial = %s" % trial)
 
-        # Spike times
-        all_spikes = [np.array([]) for k in range(3*(Network_params["N_exc"]+Network_params["N_inh"]))]
+                    # Simulation data arrays
+                    simtime = []
+                    data_v = []
+                    data_s = []
+                    senders_v = []
+                    senders_s = []
+                    data_v_pd = []
 
-        # Time array
-        t_sim = np.array([])
+                    # Membrane potentials
+                    # if Simulation_params["computeMP"]:
+                    #     potentials = [ [np.array([]) for k in range(Network_params["N_exc"])],
+                    #                    [np.array([]) for k in range(Network_params["N_inh"])] ]
 
-        # To save data
-        filename = 'trial_'+str(trial)+'_rate_'+str(v0)
+                    # AMPA and GABA currents of exc. cells
+                    AMPA_current = np.array([])
+                    GABA_current = np.array([])
 
-        # Create the network
-        net = network_1.network(Network_params,Neuron_params,Simulation_params,
-            External_input_params, Analysis_params)
-        net.create_network()
+                    # LFPs
+                    # LFP = [np.array([]) for k in range(7)]
 
-        # Simulate the network in intervals of duration "siminterval"
-        for time_interval in np.arange(0,Simulation_params["simtime"],Simulation_params["siminterval"]):
-            # Clean dir for every time interval
-            cleandir()
+                    # PSTHs of exc. cells
+                    # PSTH_bin_size = 1.0 # ms
+                    # all_PSTHs_exc = np.zeros((Network_params["N_exc"],int(Simulation_params["simtime"]/PSTH_bin_size)))
+                    # all_PSTHs_inh = np.zeros((Network_params["N_inh"],int(Simulation_params["simtime"]/PSTH_bin_size)))
 
-            # Simulate
-            [simtime,data_v,data_s,senders_v,senders_s,pop_ex,pop_in,pop_thalamo,pop_cc,
-            pop_parrot_th,pop_parrot_cc, mult_exc,mult_inh] = net.simulate_network(Simulation_params["siminterval"])
+                    # Spike times
+                    all_spikes = [np.array([]) for k in range(3*(Network_params["N_exc"]+Network_params["N_inh"]))]
 
-            # Load data from files
-            print("Loading results...")
-            if Simulation_params["toMemory"] == False:
-                [data_v,data_s,senders_v,senders_s] = tools.loadRec(
-                                                Analysis_params["To_be_measured"],
-                                                Simulation_params["num_threads"])
+                    # Time array
+                    t_sim = np.array([])
 
-            # Membrane potentials
-            if trial==0 and Simulation_params["computeMP"]:
-                print("\nComputing MPs...")
-                for k,i in enumerate(pop_ex):
-                    pos_exc = np.where(senders_v[0]==i)
-                    potentials[0][k] = np.concatenate((potentials[0][k],(data_v[0][0]['V_m'])[pos_exc]))
+                    # To save data
+                    filename = 'trial_'+str(trial)+'_rate_'+str(v0)+'_gex_'+str(ggex)+'_gin_'+str(ggin)
 
-                for k,i in enumerate(pop_in):
-                    pos_inh = np.where(senders_v[1]==i)
-                    potentials[1][k] = np.concatenate((potentials[1][k],(data_v[1][0]['V_m'])[pos_inh]))
+                    # Create the network
+                    net = network_1.network(Network_params_copy,Neuron_params,Simulation_params,
+                        External_input_params, Analysis_params)
+                    net.create_network()
 
-            # AMPA and GABA currents of exc. cells
-            print("\nComputing AMPA and GABA currents...")
+                    # Simulate the network in intervals of duration "siminterval"
+                    for time_interval in np.arange(0,Simulation_params["simtime"],Simulation_params["siminterval"]):
+                        # Clean dir for every time interval
+                        cleandir()
 
-            # Save data_v to Pandas DataFrame
-            data_v_pd = pd.DataFrame(data_v[0][0])
-            data_v_pd.set_index(senders_v[0], inplace=True)
+                        # Simulate
+                        [simtime,data_v,data_s,senders_v,senders_s,pop_ex,pop_in,pop_thalamo,pop_cc,
+                        pop_parrot_th,pop_parrot_cc, mult_exc,mult_inh] = net.simulate_network(Simulation_params["siminterval"])
 
-            # Sort by time and index
-            data_v_pd['index'] = data_v_pd.index
-            data_v_pd.sort_values(['index', 'times'],inplace=True)
+                        # Load data from files
+                        print("Loading results...")
+                        if Simulation_params["toMemory"] == False:
+                            [data_v,data_s,senders_v,senders_s] = tools.loadRec(
+                                                            Analysis_params["To_be_measured"],
+                                                            Simulation_params["num_threads"])
 
-            # Create arrays
-            first_trace = (data_v[0][0]['V_m'])[np.where(senders_v[0]==pop_ex[0])[0]]
-            AMPA_trace = np.zeros(len(first_trace))
-            GABA_trace = np.zeros(len(first_trace))
+                        # # Membrane potentials
+                        # if trial==0 and Simulation_params["computeMP"]:
+                        #     print("\nComputing MPs...")
+                        #     for k,i in enumerate(pop_ex):
+                        #         pos_exc = np.where(senders_v[0]==i)
+                        #         potentials[0][k] = np.concatenate((potentials[0][k],(data_v[0][0]['V_m'])[pos_exc]))
+                        #
+                        #     for k,i in enumerate(pop_in):
+                        #         pos_inh = np.where(senders_v[1]==i)
+                        #         potentials[1][k] = np.concatenate((potentials[1][k],(data_v[1][0]['V_m'])[pos_inh]))
 
-            for k,i in enumerate(pop_ex):
-                sys.stdout.write("\r" + "Processing cell %s " % k)
-                sys.stdout.flush()
-                # Faster way of indexing
-                rr = slice(k*len(first_trace),(k+1)*len(first_trace),1)
+                        # AMPA and GABA currents of exc. cells
+                        print("\nComputing AMPA and GABA currents...")
 
-                AMPA_trace += -(data_v_pd[rr]['g_ex'].values) *\
-                ((data_v_pd[rr]['V_m'].values) - excitatory_cell_params["E_ex"])
-                GABA_trace += -(data_v_pd[rr]['g_in'].values) *\
-                ((data_v_pd[rr]['V_m'].values) - excitatory_cell_params["E_in"])
+                        # Save data_v to Pandas DataFrame
+                        data_v_pd = pd.DataFrame(data_v[0][0])
+                        data_v_pd.set_index(senders_v[0], inplace=True)
 
-                # # Old approach
-                # sender_pos = np.where(senders_v[0]==i)[0]
-                #
-                # AMPA_trace += -(data_v[0][0]['g_ex'])[sender_pos] *\
-                # ((data_v[0][0]['V_m'])[sender_pos] - excitatory_cell_params["E_ex"])
-                # GABA_trace += -(data_v[0][0]['g_in'])[sender_pos] *\
-                # ((data_v[0][0]['V_m'])[sender_pos] - excitatory_cell_params["E_in"])
+                        # Sort by time and index
+                        data_v_pd['index'] = data_v_pd.index
+                        data_v_pd.sort_values(['index', 'times'],inplace=True)
 
-            AMPA_current = np.concatenate((AMPA_current,AMPA_trace))
-            GABA_current = np.concatenate((GABA_current,GABA_trace))
+                        # Create arrays
+                        first_trace = (data_v[0][0]['V_m'])[np.where(senders_v[0]==pop_ex[0])[0]]
+                        AMPA_trace = np.zeros(len(first_trace))
+                        GABA_trace = np.zeros(len(first_trace))
 
-            # Firing rate of exc. cells
-            print("\nComputing Firing rates and LFPs...")
-            sel_cells_exc = [pop_ex[i] for i in Analysis_params["cells_to_analyze"]]
-            sel_cells_inh = [pop_in[i] for i in Analysis_params["cells_to_analyze"]]
+                        for k,i in enumerate(pop_ex):
+                            sys.stdout.write("\r" + "Processing cell %s " % k)
+                            sys.stdout.flush()
+                            # Faster way of indexing
+                            rr = slice(k*len(first_trace),(k+1)*len(first_trace),1)
 
-            [PSTH_exc,selected_PSTHs_exc,avg_PSTH_exc,mean_FR_exc,
-            avg_ISI_exc] = tools.PSTH(Simulation_params["simtime"],data_s[0],senders_s[0],
-                                      pop_ex,sel_cells_exc,PSTH_bin_size)
+                            AMPA_trace += -(data_v_pd[rr]['g_ex'].values) *\
+                            ((data_v_pd[rr]['V_m'].values) - excitatory_cell_params["E_ex"])
+                            GABA_trace += -(data_v_pd[rr]['g_in'].values) *\
+                            ((data_v_pd[rr]['V_m'].values) - excitatory_cell_params["E_in"])
 
-            [PSTH_inh,selected_PSTHs_inh,avg_PSTH_inh,mean_FR_inh,
-            avg_ISI_inh] = tools.PSTH(Simulation_params["simtime"],data_s[1],senders_s[1],
-                                    pop_in,sel_cells_inh,PSTH_bin_size)
+                            # # Old approach
+                            # sender_pos = np.where(senders_v[0]==i)[0]
+                            #
+                            # AMPA_trace += -(data_v[0][0]['g_ex'])[sender_pos] *\
+                            # ((data_v[0][0]['V_m'])[sender_pos] - excitatory_cell_params["E_ex"])
+                            # GABA_trace += -(data_v[0][0]['g_in'])[sender_pos] *\
+                            # ((data_v[0][0]['V_m'])[sender_pos] - excitatory_cell_params["E_in"])
 
-            for k in range(len(PSTH_exc)):
-                all_PSTHs_exc[k] += PSTH_exc[k]
+                        AMPA_current = np.concatenate((AMPA_current,AMPA_trace))
+                        GABA_current = np.concatenate((GABA_current,GABA_trace))
 
-            for k in range(len(PSTH_inh)):
-                all_PSTHs_inh[k] += PSTH_inh[k]
+                        # # Firing rate of exc. cells
+                        # print("\nComputing Firing rates and LFPs...")
+                        # sel_cells_exc = [pop_ex[i] for i in Analysis_params["cells_to_analyze"]]
+                        # sel_cells_inh = [pop_in[i] for i in Analysis_params["cells_to_analyze"]]
+                        #
+                        # [PSTH_exc,selected_PSTHs_exc,avg_PSTH_exc,mean_FR_exc,
+                        # avg_ISI_exc] = tools.PSTH(Simulation_params["simtime"],data_s[0],senders_s[0],
+                        #                           pop_ex,sel_cells_exc,PSTH_bin_size)
+                        #
+                        # [PSTH_inh,selected_PSTHs_inh,avg_PSTH_inh,mean_FR_inh,
+                        # avg_ISI_inh] = tools.PSTH(Simulation_params["simtime"],data_s[1],senders_s[1],
+                        #                         pop_in,sel_cells_in,PSTH_bin_size)
+                        #
+                        # for k in range(len(PSTH_exc)):
+                        #     all_PSTHs_exc[k] += PSTH_exc[k]
+                        #
+                        # for k in range(len(PSTH_inh)):
+                        #     all_PSTHs_inh[k] += PSTH_inh[k]
+                        #
+                        # # Select the current time interval since the PSTH is computed
+                        # # for the whole simulation time
+                        # PSTH_range = [int(time_interval/PSTH_bin_size),int((time_interval+\
+                        #               Simulation_params["siminterval"])/PSTH_bin_size)]
+                        #
+                        # new_PSTH = []
+                        # for k in range(len(PSTH_exc)):
+                        #     new_PSTH.append(PSTH_exc[k][PSTH_range[0]:PSTH_range[1]])
+                        #
+                        # # LFP
+                        # LFP_trace = tools.LFP(Simulation_params["siminterval"],Simulation_params["simstep"],
+                        #         data_v,senders_v,new_PSTH,pop_ex,excitatory_cell_params["E_ex"],
+                        #         excitatory_cell_params["E_in"],excitatory_cell_params["g_L"],
+                        #         PSTH_bin_size,data_v_pd)
+                        #
+                        # # # Old approach
+                        # # LFP_trace = tools.LFP(Simulation_params["siminterval"],Simulation_params["simstep"],
+                        # #         data_v,senders_v,new_PSTH,pop_ex,excitatory_cell_params["E_ex"],
+                        # #         excitatory_cell_params["E_in"],excitatory_cell_params["g_L"],
+                        # #         PSTH_bin_size)
+                        #
+                        # for k in range(7):
+                        #     LFP[k] = np.concatenate((LFP[k],LFP_trace[k]))
 
-            # Select the current time interval since the PSTH is computed
-            # for the whole simulation time
-            PSTH_range = [int(time_interval/PSTH_bin_size),int((time_interval+\
-                          Simulation_params["siminterval"])/PSTH_bin_size)]
+                        # Time array
+                        t_sim = np.concatenate((t_sim,
+                                (data_v[0][0]['times'])[np.where(senders_v[0]==pop_ex[0])]))
 
-            new_PSTH = []
-            for k in range(len(PSTH_exc)):
-                new_PSTH.append(PSTH_exc[k][PSTH_range[0]:PSTH_range[1]])
+                        # Collect spike times produced by all cells in all populations. Spikes
+                        # of exc. cells will be located at [0 ... N_exc-1], spikes of inh. cells
+                        # at [N_exc ... (N_exc + N_inh - 1)], spikes from the external inputs at
+                        # [N_exc + N_inh) ... (N_exc + N_inh + N_th + N_cc - 1)]
+                        # print("\nComputing spike times...")
+                        #
+                        k = 0
+                        for cell in pop_ex:
+                            sender_positions = np.where(senders_s[0]==cell)
+                            spike_times = (data_s[0][0]['times'])[sender_positions[0]]
+                            all_spikes[k]= np.concatenate((all_spikes[k],spike_times))
+                            k+=1
 
-            # LFP
-            LFP_trace = tools.LFP(Simulation_params["siminterval"],Simulation_params["simstep"],
-                    data_v,senders_v,new_PSTH,pop_ex,excitatory_cell_params["E_ex"],
-                    excitatory_cell_params["E_in"],excitatory_cell_params["g_L"],
-                    PSTH_bin_size,data_v_pd)
+                        for cell in pop_in:
+                            sender_positions = np.where(senders_s[1]==cell)
+                            spike_times = (data_s[1][0]['times'])[sender_positions[0]]
+                            all_spikes[k]= np.concatenate((all_spikes[k],spike_times))
+                            k+=1
 
-            # # Old approach
-            # LFP_trace = tools.LFP(Simulation_params["siminterval"],Simulation_params["simstep"],
-            #         data_v,senders_v,new_PSTH,pop_ex,excitatory_cell_params["E_ex"],
-            #         excitatory_cell_params["E_in"],excitatory_cell_params["g_L"],
-            #         PSTH_bin_size)
+                        # for cell in pop_parrot_th:
+                        #     sender_positions = np.where(senders_s[2]==cell)
+                        #     spike_times = (data_s[2][0]['times'])[sender_positions[0]]
+                        #     all_spikes[k]= np.concatenate((all_spikes[k],spike_times))
+                        #     k+=1
+                        #
+                        # for cell in pop_parrot_cc:
+                        #     sender_positions = np.where(senders_s[3]==cell)
+                        #     spike_times = (data_s[3][0]['times'])[sender_positions[0]]
+                        #     all_spikes[k]= np.concatenate((all_spikes[k],spike_times))
+                        #     k+=1
 
-            for k in range(7):
-                LFP[k] = np.concatenate((LFP[k],LFP_trace[k]))
+                        # Create the connection matrix. Each line 'k' of the file has the
+                        # IDs of the presynaptic connections to the cell 'k'.
+                        # if time_interval == 0:
+                        #     connection_matrix = [[] for k in range(len(pop_ex)+len(pop_in))]
+                        #     print("Computing connection matrix...")
+                        #
+                        #     # Search for recurrent connections
+                        #     for n in pop_ex+pop_in:
+                        #         conns = nest.GetConnections(target = [n])
+                        #         st = nest.GetStatus(conns)
+                        #
+                        #         if n in pop_ex:
+                        #             ind = pop_ex.index(n)
+                        #         else:
+                        #             ind = pop_in.index(n)+len(pop_ex)
+                        #
+                        #         for st_con in st:
+                        #             if st_con['source'] in pop_ex:
+                        #                 connection_matrix[ind].append(pop_ex.index(st_con['source']))
+                        #             if st_con['source'] in pop_in:
+                        #                 connection_matrix[ind].append(pop_in.index(st_con['source'])+\
+                        #                 len(pop_ex))
+                        #
+                        #     # Add connections from external inputs
+                        #     for j in range(len(pop_parrot_th)):
+                        #         connection_matrix[j].append(j+len(pop_ex)+len(pop_in))
+                        #         connection_matrix[j].append(j+len(pop_ex)+len(pop_in)+len(pop_parrot_th))
 
-            # Time array
-            t_sim = np.concatenate((t_sim,
-                    (data_v[0][0]['times'])[np.where(senders_v[0]==pop_ex[0])]))
+                    print("Saving data...")
+                    # Save spikes
+                    # tools.saveData(Simulation_params["experiment_id"],filename,".spikes",all_spikes)
 
-            # Collect spike times produced by all cells in all populations. Spikes
-            # of exc. cells will be located at [0 ... N_exc-1], spikes of inh. cells
-            # at [N_exc ... (N_exc + N_inh - 1)], spikes from the external inputs at
-            # [N_exc + N_inh) ... (N_exc + N_inh + N_th + N_cc - 1)]
-            print("\nComputing spike times...")
+                    # Save connection matrix
+                    # tools.saveData(Simulation_params["experiment_id"],filename,".connections",connection_matrix)
 
-            k = 0
-            for cell in pop_ex:
-                sender_positions = np.where(senders_s[0]==cell)
-                spike_times = (data_s[0][0]['times'])[sender_positions[0]]
-                all_spikes[k]= np.concatenate((all_spikes[k],spike_times))
-                k+=1
+                    # Save membrane potentials
+                    # if Simulation_params["computeMP"]:
+                    #     tools.saveData(Simulation_params["experiment_id"],filename,".MP_exc",potentials[0])
+                    #     tools.saveData(Simulation_params["experiment_id"],filename,".MP_inh",potentials[1])
 
-            for cell in pop_in:
-                sender_positions = np.where(senders_s[1]==cell)
-                spike_times = (data_s[1][0]['times'])[sender_positions[0]]
-                all_spikes[k]= np.concatenate((all_spikes[k],spike_times))
-                k+=1
+                    # Save AMPA and GABA currents
+                    if Simulation_params["decimate"]:
+                        tools.saveData(Simulation_params["experiment_id"],filename,".AMPA",
+                        tools.decimate(AMPA_current,10))
 
-            for cell in pop_parrot_th:
-                sender_positions = np.where(senders_s[2]==cell)
-                spike_times = (data_s[2][0]['times'])[sender_positions[0]]
-                all_spikes[k]= np.concatenate((all_spikes[k],spike_times))
-                k+=1
-
-            for cell in pop_parrot_cc:
-                sender_positions = np.where(senders_s[3]==cell)
-                spike_times = (data_s[3][0]['times'])[sender_positions[0]]
-                all_spikes[k]= np.concatenate((all_spikes[k],spike_times))
-                k+=1
-
-            # Create the connection matrix. Each line 'k' of the file has the
-            # IDs of the presynaptic connections to the cell 'k'.
-            if time_interval == 0:
-                connection_matrix = [[] for k in range(len(pop_ex)+len(pop_in))]
-                print("Computing connection matrix...")
-
-                # Search for recurrent connections
-                for n in pop_ex+pop_in:
-                    conns = nest.GetConnections(target = [n])
-                    st = nest.GetStatus(conns)
-
-                    if n in pop_ex:
-                        ind = pop_ex.index(n)
+                        tools.saveData(Simulation_params["experiment_id"],filename,".GABA",
+                        tools.decimate(GABA_current,10))
                     else:
-                        ind = pop_in.index(n)+len(pop_ex)
+                        tools.saveData(Simulation_params["experiment_id"],filename,".AMPA",
+                        AMPA_current)
 
-                    for st_con in st:
-                        if st_con['source'] in pop_ex:
-                            connection_matrix[ind].append(pop_ex.index(st_con['source']))
-                        if st_con['source'] in pop_in:
-                            connection_matrix[ind].append(pop_in.index(st_con['source'])+\
-                            len(pop_ex))
+                        tools.saveData(Simulation_params["experiment_id"],filename,".GABA",
+                        GABA_current)
 
-                # Add connections from external inputs
-                for j in range(len(pop_parrot_th)):
-                    connection_matrix[j].append(j+len(pop_ex)+len(pop_in))
-                    connection_matrix[j].append(j+len(pop_ex)+len(pop_in)+len(pop_parrot_th))
+                    # # Normalize LFPs
+                    # # Discard first 500 ms for comp. mean and s. deviation
+                    # start_time_pos = int(500.0/Simulation_params["simstep"])
+                    # for k in range(7):
+                    #     LFP[k] = (LFP[k] - np.mean(LFP[k][start_time_pos:])) / np.std(LFP[k][start_time_pos:])
+                    #
+                    # # Save LFPs
+                    # if Simulation_params["decimate"]:
+                    #     tools.saveData(Simulation_params["experiment_id"],filename,".LFP",
+                    #     tools.decimate(LFP,10))
+                    # else:
+                    #     tools.saveData(Simulation_params["experiment_id"],filename,".LFP",
+                    #     LFP)
 
-        print("Saving data...")
-        # Save spikes
-        tools.saveData(Simulation_params["experiment_id"],filename,".spikes",all_spikes)
+                    # Save time array
+                    tools.saveData(Simulation_params["experiment_id"],filename,".times",[t_sim])
 
-        # Save connection matrix
-        tools.saveData(Simulation_params["experiment_id"],filename,".connections",connection_matrix)
+                    # Save time step
+                    tools.saveData(Simulation_params["experiment_id"],filename,".dt",Simulation_params["simstep"])
 
-        # Save membrane potentials
-        if Simulation_params["computeMP"]:
-            tools.saveData(Simulation_params["experiment_id"],filename,".MP_exc",potentials[0])
-            tools.saveData(Simulation_params["experiment_id"],filename,".MP_inh",potentials[1])
+                    # # # Analysis
+                    print("Analysis of results...")
+                    # #
+                    # # Pairwise correlation of exc. cells
+                    # number_of_samples = 1000
+                    # bin_size = 2.0 # ms
+                    # binned_spikes = []
+                    # sel_pop = np.random.randint(len(pop_ex),size = number_of_samples)
+                    # for k in sel_pop:
+                    #     binned_spikes.append(np.histogram(all_spikes[k],bins=int(Simulation_params["simtime"]/bin_size),
+                    #                         range=[0.,Simulation_params["simtime"]])[0])
+                    # cc_exc, hh, bb = tools.pairwiseCorrelation(binned_spikes)
+                    #
+                    # print("Mean pairwise correlation of exc. cells = %s"%cc_exc)
+                    #
+                    # # Pairwise correlation of inh. cells
+                    # binned_spikes = []
+                    # sel_pop = np.random.randint(len(pop_in),size = number_of_samples)
+                    # for k in sel_pop:
+                    #     binned_spikes.append(np.histogram(all_spikes[k+len(pop_ex)],bins=int(Simulation_params["simtime"]/bin_size),
+                    #                         range=[0.,Simulation_params["simtime"]])[0])
+                    # cc_inh, hh, bb = tools.pairwiseCorrelation(binned_spikes)
+                    #
+                    # print("Mean pairwise correlation of inh. cells = %s"%cc_inh)
+                    #
+                    # # fig = plt.figure(figsize=[5,3], dpi=300)
+                    # #
+                    # # Vax = fig.add_axes([0.15,0.15,0.75,0.75],frameon=True)
+                    # # Vax.bar(bb[1:],hh/float(np.sum(hh)), width=bb[1]-bb[0])
+                    # # Vax.set_ylim([0.,1.])
+                    # # Vax.set_xlabel('Pairwise correlation')
+                    # # Vax.set_ylabel('Percentage of pairs')
+                    #
+                    # # Coeff. of variation of the ISI of exc. cells
+                    # ISI = np.array([])
+                    # for spike_times in all_spikes[0:len(pop_ex)]:
+                    #     d = np.diff(spike_times)
+                    #     if len(d) > 2: # at least 3 spikes
+                    #         ISI=np.concatenate((ISI,d))
+                    #
+                    # CV_ISI_exc = scipy.stats.variation(ISI)
+                    # print("Coeff. of variation of ISI of exc. cells = %s" % CV_ISI_exc)
+                    #
+                    # # Coeff. of variation of the ISI of inh. cells
+                    # ISI = np.array([])
+                    # for spike_times in all_spikes[len(pop_ex):len(pop_ex)+len(pop_in)]:
+                    #     d = np.diff(spike_times)
+                    #     if len(d) > 2: # at least 3 spikes
+                    #         ISI=np.concatenate((ISI,d))
+                    #
+                    # CV_ISI_inh = scipy.stats.variation(ISI)
+                    # print("Coeff. of variation of ISI of inh. cells = %s" % CV_ISI_inh)
+                    #
+                    # # Estimation of mean firing rate
+                    fr_exc = [len(all_spikes[k]) for k in np.arange(0,len(pop_ex))]
+                    Mean_FR_exc = 1000. * np.mean(fr_exc)/Simulation_params["simtime"]
+                    print("Firing rate of exc. cells: %s" % Mean_FR_exc)
 
-        # Save AMPA and GABA currents
-        if Simulation_params["decimate"]:
-            tools.saveData(Simulation_params["experiment_id"],filename,".AMPA",
-            tools.decimate(AMPA_current,10))
+                    fr_inh = [len(all_spikes[k]) for k in np.arange(len(pop_ex),len(pop_ex)+len(pop_in))]
+                    Mean_FR_inh = 1000. * np.mean(fr_inh)/Simulation_params["simtime"]
+                    print("Firing rate of inh. cells: %s" % Mean_FR_inh)
 
-            tools.saveData(Simulation_params["experiment_id"],filename,".GABA",
-            tools.decimate(GABA_current,10))
-        else:
-            tools.saveData(Simulation_params["experiment_id"],filename,".AMPA",
-            AMPA_current)
+                    tools.saveData(Simulation_params["experiment_id"],filename,".fr_exc",Mean_FR_exc)
+                    tools.saveData(Simulation_params["experiment_id"],filename,".fr_inh",Mean_FR_inh)
 
-            tools.saveData(Simulation_params["experiment_id"],filename,".GABA",
-            GABA_current)
+                    #
+                    # # # Mean firing rate of exc. cells
+                    # # avg_PSTH= np.sum(all_PSTHs_exc,axis = 0)/len(pop_ex)
+                    # # Mean_FR_exc = np.mean(avg_PSTH[int(500.0/PSTH_bin_size):])
+                    # # print("Mean firing rate of exc. cells = %s" % Mean_FR_exc)
+                    # #
+                    # # # Mean firing rate of inh. cells
+                    # # avg_PSTH= np.sum(all_PSTHs_inh,axis = 0)/len(pop_in)
+                    # # Mean_FR_inh = np.mean(avg_PSTH[int(500.0/PSTH_bin_size):])
+                    # # print("Mean firing rate of inh. cells = %s" % Mean_FR_inh)
+                    #
+                    # # # Save results of the analysis of exc. cells
+                    # # try:
+                    # #     analysis = pickle.load(open('../results/'+Simulation_params["experiment_id"]+\
+                    # #                                 '/'+filename+".analysis", "rb"))
+                    # #     analysis.append([cc_exc,CV_ISI_exc,Mean_FR_exc])
+                    # #     pickle.dump(analysis, open('../results/'+Simulation_params["experiment_id"]+'/'+\
+                    # #                                  filename+".analysis", "wb"))
+                    # # except (OSError, IOError) as e:
+                    # #     pickle.dump([ [cc_exc,CV_ISI_exc,Mean_FR_exc] ], open('../results/'+Simulation_params["experiment_id"]+\
+                    # #                                 '/'+filename+".analysis", "wb"))
+                    # #
+                    # # # Save results of the analysis of inh. cells
+                    # # try:
+                    # #     analysis = pickle.load(open('../results/'+Simulation_params["experiment_id"]+\
+                    # #                                 '/'+filename+".analysis_IN", "rb"))
+                    # #     analysis.append([cc_inh,CV_ISI_inh,Mean_FR_inh])
+                    # #     pickle.dump(analysis, open('../results/'+Simulation_params["experiment_id"]+'/'+\
+                    # #                                  filename+".analysis_IN", "wb"))
+                    # # except (OSError, IOError) as e:
+                    # #     pickle.dump([ [cc_inh,CV_ISI_inh,Mean_FR_inh] ], open('../results/'+Simulation_params["experiment_id"]+\
+                    # #                                 '/'+filename+".analysis_IN", "wb"))
+                    # #
+                    # # # Raster plots of spikes
+                    # fig = plt.figure(figsize=[6,4], dpi=300)
+                    # Vax = fig.add_axes([0.15,0.15,0.8,0.8],frameon=True)
+                    # ttime = 1. * 1000.
+                    #
+                    # for k in range(len(pop_ex) + len(pop_in)):
+                    #     if k >= 0 and k <4000:
+                    #         sps = all_spikes[k][np.where((all_spikes[k] >= ttime) & (all_spikes[k] < ttime+\
+                    #         1000))[0]]
+                    #         Vax.scatter(sps,k*np.ones(len(sps)),s=0.8,color='r',label = 'Exc.')
+                    #     if k >= 4000 and k <5000:
+                    #         sps = all_spikes[k][np.where((all_spikes[k] >= ttime) & (all_spikes[k] < ttime+\
+                    #         1000))[0]]
+                    #         Vax.scatter(sps,k*np.ones(len(sps)),s=0.8,color = 'b',label = 'Inh.')
+                    #
+                    # Vax.set_xlim([ttime,ttime + 1000])
+                    # Vax.set_xlabel('Time (ms)')
+                    # Vax.set_ylabel('Cell ID')
+                    #
+                    # # Dummy plot for the legend
+                    # Vax = fig.add_axes([0.8,0.15,0.1,0.7],frameon=False)
+                    # for k in range(2):
+                    #     if k==0:
+                    #         Vax.plot([],[],'o',color='r',label = 'Exc.')
+                    #     else:
+                    #         Vax.plot([],[],'o',color = 'b',label = 'Inh.')
+                    #
+                    # Vax.set_yticks([])
+                    # Vax.set_xticks([])
+                    # Vax.legend(loc='upper right')
+                    #
+                    # fig.savefig('../results/'+Simulation_params["experiment_id"]+\
+                    #                             '/'+filename+".png")
 
-        # Normalize LFPs
-        # Discard first 500 ms for comp. mean and s. deviation
-        start_time_pos = int(500.0/Simulation_params["simstep"])
-        for k in range(7):
-            LFP[k] = (LFP[k] - np.mean(LFP[k][start_time_pos:])) / np.std(LFP[k][start_time_pos:])
+                    # # Raster plots of spikes (NEST)
+                    # nest.raster_plot.from_device(mult_exc,hist=True,title="Exc.")
+                    # nest.raster_plot.from_device(mult_inh,hist=True,title="Inh.")
 
-        # Save LFPs
-        if Simulation_params["decimate"]:
-            tools.saveData(Simulation_params["experiment_id"],filename,".LFP",
-            tools.decimate(LFP,10))
-        else:
-            tools.saveData(Simulation_params["experiment_id"],filename,".LFP",
-            LFP)
-
-        # Save time array
-        tools.saveData(Simulation_params["experiment_id"],filename,".times",[t_sim])
-
-        # Save time step
-        tools.saveData(Simulation_params["experiment_id"],filename,".dt",Simulation_params["simstep"])
-
-        # Analysis
-        print("Analysis of results...")
-
-        # Pairwise correlation of exc. cells
-        number_of_samples = 1000
-        bin_size = 2.0 # ms
-        binned_spikes = []
-        sel_pop = np.random.randint(len(pop_ex),size = number_of_samples)
-        for k in sel_pop:
-            binned_spikes.append(np.histogram(all_spikes[k],bins=int(Simulation_params["simtime"]/bin_size),
-                                range=[0.,Simulation_params["simtime"]])[0])
-        cc_exc, hh, bb = tools.pairwiseCorrelation(binned_spikes)
-
-        print("Mean pairwise correlation of exc. cells = %s"%cc_exc)
-
-        # Pairwise correlation of inh. cells
-        binned_spikes = []
-        sel_pop = np.random.randint(len(pop_in),size = number_of_samples)
-        for k in sel_pop:
-            binned_spikes.append(np.histogram(all_spikes[k+len(pop_ex)],bins=int(Simulation_params["simtime"]/bin_size),
-                                range=[0.,Simulation_params["simtime"]])[0])
-        cc_inh, hh, bb = tools.pairwiseCorrelation(binned_spikes)
-
-        print("Mean pairwise correlation of inh. cells = %s"%cc_inh)
-
-        # Coeff. of variation of the ISI of exc. cells
-        ISI = np.array([])
-        for spike_times in all_spikes[0:len(pop_ex)]:
-            d = np.diff(spike_times)
-            if len(d) > 2: # at least 3 spikes
-                ISI=np.concatenate((ISI,d))
-
-        CV_ISI_exc = scipy.stats.variation(ISI)
-        print("Coeff. of variation of ISI of exc. cells = %s" % CV_ISI_exc)
-
-        # Coeff. of variation of the ISI of inh. cells
-        ISI = np.array([])
-        for spike_times in all_spikes[len(pop_ex):len(pop_ex)+len(pop_in)]:
-            d = np.diff(spike_times)
-            if len(d) > 2: # at least 3 spikes
-                ISI=np.concatenate((ISI,d))
-
-        CV_ISI_inh = scipy.stats.variation(ISI)
-        print("Coeff. of variation of ISI of inh. cells = %s" % CV_ISI_inh)
-
-        # Mean firing rate of exc. cells
-        avg_PSTH= np.sum(all_PSTHs_exc,axis = 0)/len(pop_ex)
-        Mean_FR_exc = np.mean(avg_PSTH[int(500.0/PSTH_bin_size):])
-        print("Mean firing rate of exc. cells = %s" % Mean_FR_exc)
-
-        # Mean firing rate of inh. cells
-        avg_PSTH= np.sum(all_PSTHs_inh,axis = 0)/len(pop_in)
-        Mean_FR_inh = np.mean(avg_PSTH[int(500.0/PSTH_bin_size):])
-        print("Mean firing rate of inh. cells = %s" % Mean_FR_inh)
-
-        # Save results of the analysis of exc. cells
-        try:
-            analysis = pickle.load(open('../results/'+Simulation_params["experiment_id"]+\
-                                        '/'+filename+".analysis", "rb"))
-            analysis.append([cc_exc,CV_ISI_exc,Mean_FR_exc])
-            pickle.dump(analysis, open('../results/'+Simulation_params["experiment_id"]+'/'+\
-                                         filename+".analysis", "wb"))
-        except (OSError, IOError) as e:
-            pickle.dump([ [cc_exc,CV_ISI_exc,Mean_FR_exc] ], open('../results/'+Simulation_params["experiment_id"]+\
-                                        '/'+filename+".analysis", "wb"))
-
-        # Save results of the analysis of inh. cells
-        try:
-            analysis = pickle.load(open('../results/'+Simulation_params["experiment_id"]+\
-                                        '/'+filename+".analysis_IN", "rb"))
-            analysis.append([cc_inh,CV_ISI_inh,Mean_FR_inh])
-            pickle.dump(analysis, open('../results/'+Simulation_params["experiment_id"]+'/'+\
-                                         filename+".analysis_IN", "wb"))
-        except (OSError, IOError) as e:
-            pickle.dump([ [cc_inh,CV_ISI_inh,Mean_FR_inh] ], open('../results/'+Simulation_params["experiment_id"]+\
-                                        '/'+filename+".analysis_IN", "wb"))
-
-        # Raster plots of spikes
-        fig = plt.figure(figsize=[8,6], dpi=300)
-        Vax = fig.add_axes([0.15,0.15,0.8,0.8],frameon=True)
-        for k in range(len(pop_ex) + len(pop_in)):
-            if k < len(pop_ex):
-                Vax.scatter(all_spikes[k],k*np.ones(len(all_spikes[k])),s=0.2,color='b',label = 'Exc.')
-            else:
-                Vax.scatter(all_spikes[k],k*np.ones(len(all_spikes[k])),s=0.2,color = 'r',label = 'Inh.')
-
-        Vax.set_xlim([0.0,Simulation_params['simtime']])
-        Vax.set_xlabel('Time (ms)')
-        Vax.set_ylabel('Cell ID')
-
-        # Dummy plot for the legend
-        Vax = fig.add_axes([0.8,0.15,0.1,0.7],frameon=False)
-        for k in range(2):
-            if k==0:
-                Vax.plot([],[],'o',color='b',label = 'Exc.')
-            else:
-                Vax.plot([],[],'o',color = 'r',label = 'Inh.')
-
-        Vax.set_yticks([])
-        Vax.set_xticks([])
-        Vax.legend(loc='upper right')
-
-        # # Raster plots of spikes (NEST)
-        # nest.raster_plot.from_device(mult_exc,hist=True,title="Exc.")
-        # nest.raster_plot.from_device(mult_inh,hist=True,title="Inh.")
-
-        plt.show()
+                    # plt.show()
