@@ -5,7 +5,7 @@ size_factor = 100 # downscale the size of the network <br>
 weight_factor = 100 # increase the synaptic weights to compensate it
 
 ## Simulation_params
-"experiment_id": "Sim1", <br>
+"experiment_id": "Sim4", <br>
 "simtime": 200000., <br>
 "simstep": 0.1, <br>
 "siminterval": 200000., <br>
